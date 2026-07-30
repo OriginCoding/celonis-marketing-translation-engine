@@ -182,13 +182,14 @@ export default function MarketingStudioApp() {
           asset_name: pipelineData.asset_name,
           source_html: pipelineData.source_html,
           critique_feedback: pipelineData.quality_score.critique_feedback,
+          current_pass: pipelineData.self_correction_passes || 0,
         }),
       });
       const data = await res.json();
 
       setTimeout(() => {
         setReflexionProgress(100);
-        setReflexionStageText("✅ Reflexion Pass Complete! DNT Violations Repaired (Score: 97.5%)");
+        setReflexionStageText(`✅ Reflexion Pass Complete! Status: ${data.routing_decision?.status} (Score: ${data.quality_score?.overall_confidence}%)`);
         setReflexionCompleted(true);
         setPipelineData(data);
 
@@ -444,10 +445,11 @@ export default function MarketingStudioApp() {
                 )}
 
                 <optgroup label="📁 --- PRE-LOADED TEST SCENARIOS ---">
-                  <option value="context_model_page.html">🟢 Scenario 1: Clean Landing Page (Pass 97% - Green)</option>
-                  <option value="dnt_violation_sample.html">🔴 Scenario 2: Brand Term Corruption (DNT Score 30% - Red/Yellow Alert)</option>
-                  <option value="broken_html_sample.html">⛔ Scenario 3: Broken HTML Tag Parity & Missing Links (Reject 45%)</option>
-                  <option value="loanwords_sample.html">💬 Scenario 4: Forbidden Loanword Check (Warning 72% - Amber)</option>
+                  <option value="context_model_page.html">🟢 Scenario 1: Celonis Context Model Page (Pass 97.5% - Green)</option>
+                  <option value="ai_dev_page.html">🟢 Scenario 2: AI Development & Composable Solutions (Pass 97.5% - Green)</option>
+                  <option value="dnt_violation_sample.html">🔴 Scenario 3: Brand Term Corruption & DNT Violation (DNT Score 30% - Red/Yellow Alert)</option>
+                  <option value="broken_html_sample.html">⛔ Scenario 4: Broken HTML Tag Parity & Missing Links (Reject 45%)</option>
+                  <option value="loanwords_sample.html">💬 Scenario 5: Forbidden Loanword Check (Warning 72% - Amber)</option>
                 </optgroup>
               </select>
             </div>
@@ -528,9 +530,14 @@ export default function MarketingStudioApp() {
                     <Eye className="w-5 h-5 text-cyan-400" /> Visual Page Side-by-Side Render
                   </h3>
                 </div>
-                <span className="text-xs font-mono text-white bg-cyan-950 px-4 py-2 rounded-full border border-cyan-400 font-extrabold shadow-lg">
-                  Active Asset: {pipelineData.asset_name}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-mono text-white bg-cyan-950 px-4 py-2 rounded-full border border-cyan-400 font-extrabold shadow-lg">
+                    Active Asset: {pipelineData.asset_name}
+                  </span>
+                  <span className="text-xs font-mono font-extrabold px-3 py-1.5 rounded-full bg-purple-900/80 text-purple-300 border border-purple-400 shadow-md">
+                    {pipelineData.self_correction_passes > 0 ? `🔄 Reflexion Pass #${pipelineData.self_correction_passes}` : `🚀 Initial Pipeline Run`}
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -683,7 +690,7 @@ export default function MarketingStudioApp() {
                         disabled={isLoading || isReflexionActive}
                         className="px-6 py-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-xl flex items-center gap-2.5 cursor-pointer transition-all border border-purple-300 disabled:opacity-50"
                       >
-                        <Wand2 className="w-5 h-5" /> Improve & Resubmit (AI Reflexion)
+                        <Wand2 className="w-5 h-5" /> Improve & Resubmit (Reflexion Pass #{ (pipelineData.self_correction_passes || 0) + 1 })
                       </button>
 
                       <button

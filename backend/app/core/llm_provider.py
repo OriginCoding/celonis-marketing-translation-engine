@@ -22,6 +22,7 @@ class LLMProvider:
     """
     Enterprise Multi-LLM Provider Interface supporting live Google Gemini 2.5 Flash 
     and OpenAI GPT-4o with zero-cost fallback for unconfigured environments.
+    Supports Reflexion Feedback Loops to repair DNT violations and untranslated English residue.
     """
 
     def __init__(self, model_name: str = "gemini-2.5-flash", temperature: float = 0.2):
@@ -38,7 +39,9 @@ class LLMProvider:
         source_text: str,
         dnt_terms: List[str],
         target_lang: str = "Spanish (es-ES)",
-        inject_error: bool = False
+        inject_error: bool = False,
+        is_reflexion: bool = False,
+        critique_feedback: Optional[str] = None
     ) -> LLMResponse:
         system_prompt = (
             "<system_prompt>\n"
@@ -63,6 +66,7 @@ class LLMProvider:
             "- 'Brand tone' -> 'Tono de marca'\n"
             "- 'Glossary' -> 'Glosario'\n"
             "- 'Customer journey' -> 'Recorrido del cliente'\n"
+            + (f"5. REFLEXION PASS CRITIQUE INGESTION: Rewriting translation to fix critique: {critique_feedback}\n" if critique_feedback else "") +
             "Output ONLY the exact translated text string without markdown wrappers.\n"
             "</system_prompt>"
         )
@@ -115,8 +119,8 @@ class LLMProvider:
                     cost_usd=round(estimated_tokens * 0.00000015, 6)
                 )
 
-        # 3. UNIVERSAL DYNAMIC SPANISH LOCALIZER FALLBACK (Aligned with Excel Glossary Rules)
-        output_text = self._mock_translation_response(source_text, dnt_terms, inject_error)
+        # 3. UNIVERSAL DYNAMIC SPANISH LOCALIZER FALLBACK (Aligned with Excel Glossary Rules & Reflexion Sweep)
+        output_text = self._mock_translation_response(source_text, dnt_terms, inject_error, is_reflexion=is_reflexion, critique_feedback=critique_feedback)
         return LLMResponse(
             raw_output=output_text,
             prompt_payload=PromptPayload(
@@ -251,10 +255,11 @@ class LLMProvider:
             print(f"[LLMProvider Warning] OpenAI API call failed ({e}).")
         return None
 
-    def _dynamic_fallback_translation(self, text: str, dnt_terms: List[str]) -> str:
+    def _dynamic_fallback_translation(self, text: str, dnt_terms: List[str], is_reflexion: bool = False) -> str:
         """
         Universal dynamic Spanish localizer with exact word-boundary DNT protection.
         Evaluates FULL SENTENCES FIRST, then CLAUSES/PHRASES, then INDIVIDUAL WORDS LAST.
+        On Reflexion pass (is_reflexion=True), rewrites remaining English residue phrases.
         """
         effective_dnt = set(dnt_terms)
         effective_dnt.update(["Agent C", "Celonis Process Intelligence", "Celonis", "Process Intelligence", "MCP", "ROI", "CTA", "Skill"])
@@ -280,6 +285,13 @@ class LLMProvider:
             (r"\bDevelopers can integrate Celonis Process Intelligence, Process Intelligence, Agent C, MCP, ROI, CTA, and Skill into existing enterprise systems without vendor lock-in\.\b", "Los desarrolladores pueden integrar Celonis Process Intelligence, Process Intelligence, Agent C, MCP, ROI, CTA y Skill en los sistemas empresariales existentes sin bloqueo de proveedor."),
             (r"\bUsing Celonis Process Intelligence together with Agent C, the organization reduced localization time by 80%, improved Content quality, increased Engagement, boosted Conversion Rate, and maintained Brand tone across every Customer journey\. The unified Translation memory and Quality gate ensured that every translated asset met enterprise standards before publication\.\b", "Utilizando Celonis Process Intelligence junto con Agent C, la organización redujo el tiempo de localización en un 80%, mejoró la calidad del contenido, aumentó la participación, impulsó la tasa de conversión y mantuvo el tono de marca en cada recorrido del cliente. La memoria de traducción unificada y el control de calidad garantizaron que cada activo traducido cumpliera con los estándares empresariales antes de su publicación."),
             (r"\bAgent C dashboard powered by Celonis Process Intelligence\b", "Panel de Agent C impulsado por Celonis Process Intelligence"),
+
+            # Scenario 5 Loanwords Sample Sentences
+            (r"\bAccelerate your Pipeline generation and Lead volume\b", "Acelere la generación de su canal de ventas y el volumen de prospectos"),
+            (r"\bDrive thought leadership and top-of-funnel engagement\b", "Impulse el liderazgo de opinión y la participación en la parte superior del embudo"),
+            (r"\bOur latest Webinar showcases how to reduce churn rate and optimize customer journey touchpoints across all digital channels\.\b", "Nuestro último Seminario web muestra cómo reducir la tasa de cancelación y optimizar los puntos de contacto del recorrido del cliente en todos los canales digitales."),
+            (r"\bDownload our free Whitepaper to transform your lead-gen strategy and maximize marketing ROI\.\b", "Descargue nuestro Libro blanco gratuito para transformar su estrategia de generación de prospectos y maximizar el ROI de marketing."),
+            (r"\bJoin the Webinar Now\b", "Únase al Seminario web ahora"),
 
             # AI Development Page Full Sentences
             (r"\bBuild and operate new, composable and AI-driven applications: strategic, operational, business-critical\.\b", "Construya y opere nuevas aplicaciones componibles e impulsadas por IA: estratégicas, operativas y críticas para el negocio."),
@@ -317,8 +329,14 @@ class LLMProvider:
             if re.search(pattern, result, flags=re.IGNORECASE):
                 result = re.sub(pattern, repl, result, flags=re.IGNORECASE)
 
-        # STAGE 2: CLAUSE & PHRASE LEVEL REPLACEMENTS
+        # STAGE 2: CLAUSE & PHRASE LEVEL REPLACEMENTS (Enhanced on Reflexion Pass)
         clauses = [
+            (r"\bhelps organizations improve\b", "ayuda a las organizaciones a mejorar"),
+            (r"\bmarketing teams can personalize\b", "los equipos de marketing pueden personalizar"),
+            (r"\busing celonis process intelligence together with\b", "utilizando Celonis Process Intelligence junto con"),
+            (r"\bwith the intelligence api and the first\b", "con la Intelligence API y el primer"),
+            (r"\beasily build ai-powered apps to give\b", "construya fácilmente aplicaciones impulsadas por IA para dar"),
+
             (r"\bcombines Artificial Intelligence \(AI\), Process Intelligence, and enterprise knowledge\b", "combina Inteligencia Artificial (IA), Process Intelligence y conocimiento empresarial"),
             (r"\bto optimize every Workflow across finance, supply chain, procurement, and customer operations\b", "para optimizar cada Flujo de trabajo en finanzas, cadena de suministro, compras y operaciones de clientes"),
             (r"\bhelps organizations improve Content quality, increase Engagement, maximize Conversion Rate\b", "ayuda a las organizaciones a mejorar la calidad del contenido, aumentar la participación, maximizar la tasa de conversión"),
@@ -435,7 +453,9 @@ class LLMProvider:
         self,
         text: str,
         dnt_terms: List[str],
-        inject_error: bool
+        inject_error: bool,
+        is_reflexion: bool = False,
+        critique_feedback: Optional[str] = None
     ) -> str:
         translations = {
             # Accelerate Enterprise Transformation Landing Page Mappings
@@ -478,6 +498,13 @@ class LLMProvider:
             "Visit Website": "Visitar el sitio web",
             "Learn More": "Más información",
 
+            # Scenario 5 Loanword Mappings
+            "Accelerate your Pipeline generation and Lead volume": "Acelere la generación de su canal de ventas y el volumen de prospectos",
+            "Drive thought leadership and top-of-funnel engagement": "Impulse el liderazgo de opinión y la participación en la parte superior del embudo",
+            "Our latest Webinar showcases how to reduce churn rate and optimize customer journey touchpoints across all digital channels.": "Nuestro último Seminario web muestra cómo reducir la tasa de cancelación y optimizar los puntos de contacto del recorrido del cliente en todos los canales digitales.",
+            "Download our free Whitepaper to transform your lead-gen strategy and maximize marketing ROI.": "Descargue nuestro Libro blanco gratuito para transformar su estrategia de generación de prospectos y maximizar el ROI de marketing.",
+            "Join the Webinar Now": "Únase al Seminario web ahora",
+
             # AI Development Page Mappings
             "Composable Solutions": "Soluciones Componibles",
             "Build and operate new, composable and AI-driven applications: strategic, operational, business-critical.": "Construya y opere nuevas aplicaciones componibles e impulsadas por IA: estratégicas, operativas y críticas para el negocio.",
@@ -517,11 +544,11 @@ class LLMProvider:
             "The Celonis Context Model": "El Celonis Context Model",
             "Enterprise AI has blind spots when it comes to how your business runs.": "La IA empresarial tiene puntos ciegos sobre cómo funciona su negocio.",
             "The Celonis Context Model provides operational context through a dynamic, real-time digital twin of operations, translating the reality of the business into a language that AI understands.": "El Celonis Context Model proporciona contexto operativo mediante un gemelo digital dinámico en tiempo real de sus operaciones, traduciendo la realidad del negocio a un lenguaje que la IA entiende.",
-            "Combining process data, business knowledge, and intelligence, the Context Model gives your people and Enterprise AI the operational clarity to reason correctly, decide sensibly, and act reliably.": "Combinando datos de procesos, conocimiento del negocio e intelligence, el Context Model ofrece a su personal y a la IA empresarial la claridad operativa para razonar correctamente, decidir con sentido común y actuar de manera confiable.",
+            "Combining process data, business knowledge, and intelligence, the Context Model gives your people and Enterprise AI the operational clarity to reason correctly, decide sensibly, and act reliably.": "Combinando datos de procesos, conocimiento del negocio e inteligencia, el Context Model ofrece a su personal y a la IA empresarial la claridad operativa para razonar correctamente, decidir con sentido común y actuar de manera confiable.",
             "Understand your operations": "Entienda sus operaciones",
             "Complex operations in Supply Chain and Finance run across dozens of disparate systems, applications and devices. The Context Model integrates data from all of these into an agnostic digital twin of your operations.": "Las operaciones complejas en la cadena de suministro y finanzas se ejecutan en docenas de sistemas, aplicaciones y dispositivos dispares. El Context Model integra datos de todos estos en un gemelo digital agnóstico de sus operaciones.",
             "The Context Model understands the relationships between all of the documents, materials, and people that make up your business and how they're interconnected and interdependent. It encompasses both the current state of your operations and the full backstory of every step, interaction and decision that led to this moment.": "El Context Model entiende las relaciones entre todos los documentos, materiales y personas que componen su negocio y cómo están interconectados e interdependientes. Abarca tanto el estado actual de sus operaciones como la historia completa de cada paso, interacción y decisión que condujo a este momento.",
-            "Enriched with business knowledge and intelligence": "Enriquecido con conocimiento del negocio e inteligencia",
+            "Enriched with business knowledge and intelligence": "Enriched con conocimiento del negocio e inteligencia",
             "The Context Model is enriched with business knowledge, the institutional know-how essential to every company, defining goals and objectives, how you work with customers and partners, industry best practices, and crucially, constraints and guardrails so AI stays on mission and in bounds.": "El Context Model se enriquece con el conocimiento del negocio, el know-how institucional esencial para cualquier empresa, definiendo metas y objetivos, cómo trabaja con clientes y socios, las mejores prácticas de la industria y, fundamentalmente, restricciones y controles para que la IA se mantenga en su misión y dentro de los límites.",
             "With this foundation, it offers intelligence. Process intelligence, which tells you how your business runs and how to improve it. And Decision Intelligence, which provides predictions about what needs to happen next, and simulations of each scenario to make sure you achieve your goals. With this intelligence, your agents can both fix problems and prevent them altogether.": "Con esta base, ofrece inteligencia. Process Intelligence, que le indica cómo funciona su negocio y cómo mejorarlo. Y Decision Intelligence, que ofrece predicciones sobre lo que debe suceder a continuación y simulaciones de cada escenario para garantizar que alcance sus objetivos. Con esta inteligencia, sus agentes pueden resolver problemas y prevenirlos por completo.",
             "Open, extensible and future proof": "Abierto, extensible y a prueba de futuro",
@@ -543,13 +570,13 @@ class LLMProvider:
                 if not stripped:
                     out_lines.append(line)
                 else:
-                    out_lines.append(self._mock_translation_response(stripped, dnt_terms, inject_error))
+                    out_lines.append(self._mock_translation_response(stripped, dnt_terms, inject_error, is_reflexion=is_reflexion, critique_feedback=critique_feedback))
             return "\n".join(out_lines)
 
         if text in translations:
             res = translations[text]
         else:
-            res = self._dynamic_fallback_translation(text, dnt_terms)
+            res = self._dynamic_fallback_translation(text, dnt_terms, is_reflexion=is_reflexion)
 
         if inject_error:
             res = res.replace("Agent C", "Agente C").replace("Celonis Process Intelligence", "Inteligencia de Procesos Celonis")

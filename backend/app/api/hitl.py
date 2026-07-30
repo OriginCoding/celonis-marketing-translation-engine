@@ -24,6 +24,7 @@ class SelfCorrectRequest(BaseModel):
     asset_name: str
     source_html: Optional[str] = ""
     critique_feedback: Optional[str] = ""
+    current_pass: Optional[int] = 1
 
 @router.post("/review")
 def record_human_review_decision(
@@ -70,41 +71,37 @@ def record_human_review_decision(
 @router.post("/self_correct")
 def execute_agent_self_correction(payload: SelfCorrectRequest):
     """
-    Reflexion Loop: Takes a rejected document, analyzes critique feedback,
-    re-prompts the Translation Agent to repair DNT violations, and re-evaluates.
+    Reflexion Loop with Explicit Pass Tracking (Pass 1 -> Pass 2 -> Pass 3).
+    Takes a rejected document, analyzes critique feedback, re-prompts TranslationAgent,
+    increments pass counter, and logs iteration to persistent audit ledger.
     """
+    next_pass_num = (payload.current_pass or 0) + 1
+
     req = TranslationJobRequest(
-        ticket_id="REFLEXION-PASS-2",
+        ticket_id=f"REFLEXION-PASS-{next_pass_num}",
         asset_filename=payload.asset_name,
         inject_error=False
     )
     
-    # Run pipeline with clean DNT enforcement instructions
-    result = orchestrator.run_pipeline(req, payload.source_html or None)
-    
-    # Ensure overall score passes on Reflexion pass
-    result.quality_score.overall_confidence = 97.5
-    result.quality_score.glossary_dnt = 100.0
-    result.quality_score.accuracy = 96.0
-    result.quality_score.dnt_violations = []
-    result.quality_score.critique_feedback = (
-        "PASSED (Score 97.5/100): AI Agent Reflexion Pass 2 successfully repaired all DNT violations! "
-        "Protected terms 'Agent C' and 'Celonis Process Intelligence' restored verbatim."
+    # Run pipeline with clean DNT enforcement instructions and critique feedback ingestion
+    result = orchestrator.run_pipeline(
+        request=req,
+        sample_html=payload.source_html or None,
+        is_reflexion=True,
+        critique_feedback=payload.critique_feedback
     )
-    result.routing_decision.status = "AUTO_PASS"
-    result.routing_decision.assigned_to = "Staging CMS Auto-Publisher"
-    result.self_correction_passes = 1
+    result.self_correction_passes = next_pass_num
 
-    # Record Reflexion Success in Audit Store
+    # Record Dynamic Reflexion Iteration Event in Audit Store
     audit_service.record_event(
         job_id=result.job_id,
         asset_name=payload.asset_name,
-        action="REFLEXION_SELF_CORRECTED",
-        reviewer="AI Agent Reflexion Feedback Loop",
-        reviewer_notes=result.quality_score.critique_feedback,
-        overall_score=97.5,
-        dnt_violations_count=0,
-        destination="Staging CMS / TM Ingestion"
+        action=f"REFLEXION_PASS_{next_pass_num}_" + ("AUTO_PASS" if result.routing_decision.status == "AUTO_PASS" else "REVIEW_REQUIRED"),
+        reviewer=f"AI Agent Reflexion Loop (Pass #{next_pass_num})",
+        reviewer_notes=f"[Reflexion Pass #{next_pass_num}] {result.quality_score.critique_feedback}",
+        overall_score=result.quality_score.overall_confidence,
+        dnt_violations_count=len(result.quality_score.dnt_violations),
+        destination="Staging CMS / TM Ingestion" if result.routing_decision.status == "AUTO_PASS" else f"Language Champion HITL Review Queue (Pass #{next_pass_num})"
     )
 
     return result

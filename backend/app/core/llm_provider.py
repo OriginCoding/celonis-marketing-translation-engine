@@ -46,7 +46,7 @@ class LLMProvider:
             f"Your task is to translate English marketing DOM text and attributes into professional {target_lang}.\n"
             "CRITICAL LOCALIZATION MANDATES:\n"
             "1. Translate ALL visible English text, table headers (Metric -> Métrica, Value -> Valor), and attributes (placeholder, alt, title, aria-label).\n"
-            "2. Translate generic terms like 'Agent' -> 'Agente', BUT preserve exact multi-word product terms in <dnt_glossary> VERBATIM.\n"
+            "2. Translate generic terms like 'Agent' -> 'Agente', 'Digital twin' -> 'Gemelo digital', 'Process' -> 'Proceso', 'Decision' -> 'Decisión', 'Operations' -> 'Operaciones', BUT preserve exact multi-word product terms in <dnt_glossary> VERBATIM.\n"
             "3. CRITICAL DO-NOT-TRANSLATE (DNT) GUARDRAIL: You MUST preserve all exact terms listed in <dnt_glossary> VERBATIM.\n"
             "NEVER alter, translate, or modify product names like 'Celonis', 'Agent C', 'Celonis Process Intelligence', or 'MCP'.\n"
             "4. EXCEL GLOSSARY MANDATES:\n"
@@ -254,10 +254,13 @@ class LLMProvider:
     def _dynamic_fallback_translation(self, text: str, dnt_terms: List[str]) -> str:
         """
         Universal dynamic Spanish localizer with exact word-boundary DNT protection.
+        Evaluates FULL SENTENCES FIRST, then CLAUSES/PHRASES, then INDIVIDUAL WORDS LAST.
         """
+        effective_dnt = set(dnt_terms)
+        effective_dnt.update(["Agent C", "Celonis Process Intelligence", "Celonis", "Process Intelligence", "MCP", "ROI", "CTA", "Skill"])
+        
         dnt_protected = {}
-        # Sort DNT terms by length descending to match longest phrase first ("Agent C" before "Agent")
-        sorted_dnt = sorted(dnt_terms, key=len, reverse=True)
+        sorted_dnt = sorted(list(effective_dnt), key=len, reverse=True)
         for idx, dnt in enumerate(sorted_dnt):
             placeholder = f"__DNT_PROTECTED_{idx}__"
             pattern = re.compile(r"\b" + re.escape(dnt) + r"\b")
@@ -265,154 +268,146 @@ class LLMProvider:
                 text = pattern.sub(placeholder, text)
                 dnt_protected[placeholder] = dnt
 
-        replacements = [
-            # Table Headers & Metrics
-            (r"\bMetric\b", "Métrica"),
-            (r"\bValue\b", "Valor"),
+        # STAGE 1: FULL SENTENCE & PARAGRAPH LEVEL REPLACEMENTS (Evaluates on Pure English)
+        full_sentences = [
+            (r"\bAccelerate Enterprise Transformation with Celonis Process Intelligence\b", "Acelere la Transformación Empresarial con Celonis Process Intelligence"),
+            (r"\bAgent C combines Artificial Intelligence \(AI\), Process Intelligence, and enterprise knowledge to optimize every Workflow across finance, supply chain, procurement, and customer operations\.\b", "Agent C combina Inteligencia Artificial (IA), Process Intelligence y conocimiento empresarial para optimizar cada Flujo de trabajo en finanzas, cadena de suministro, compras y operaciones de clientes."),
+            (r"\bOur latest Brand campaign helps organizations improve Content quality, increase Engagement, maximize Conversion Rate, and accelerate every Customer journey using a unified Translation memory, an intelligent Quality gate, and a centralized Glossary\.\b", "Nuestra última campaña de marca ayuda a las organizaciones a mejorar la calidad del contenido, aumentar la participación, maximizar la tasa de conversión y acelerar cada recorrido del cliente utilizando una memoria de traducción unificada, un control de calidad inteligente y un glosario centralizado."),
+            (r"\bMarketing teams can personalize every Landing page, Newsletter, and Call-to-action while maintaining a consistent Brand tone across every Touchpoint throughout the entire Pipeline\.\b", "Los equipos de marketing pueden personalizar cada página de destino, boletín de noticias y llamada a la acción mientras mantienen un tono de marca coherente en cada punto de contacto a lo largo de todo el canal de ventas."),
+            (r"\bJoin our Webinar to learn how every Lead can be nurtured through a personalized Landing page, automated Newsletter, intelligent Call-to-action, and AI-powered Workflow built with Agent C\.\b", "Únase a nuestro Seminario web para aprender cómo cada prospecto puede ser nutrido a través de una página de destino personalizada, boletín de noticias automatizado, llamada a la acción inteligente y Flujo de trabajo impulsado por IA creado con Agent C."),
+            (r"\bThe MCP Server communicates with every Skill to automate enterprise localization while protecting ROI and preserving every Celonis product name\. Developers can integrate Celonis Process Intelligence, Process Intelligence, Agent C, MCP, ROI, CTA, and Skill into existing enterprise systems without vendor lock-in\.\b", "El servidor MCP se comunica con cada Skill para automatizar la localización empresarial mientras protege el ROI y conserva cada nombre de producto de Celonis. Los desarrolladores pueden integrar Celonis Process Intelligence, Process Intelligence, Agent C, MCP, ROI, CTA y Skill en los sistemas empresariales existentes sin bloqueo de proveedor."),
+            (r"\bThe MCP Server communicates with every Skill to automate enterprise localization while protecting ROI and preserving every Celonis product name\.\b", "El servidor MCP se comunica con cada Skill para automatizar la localización empresarial mientras protege el ROI y conserva cada nombre de producto de Celonis."),
+            (r"\bDevelopers can integrate Celonis Process Intelligence, Process Intelligence, Agent C, MCP, ROI, CTA, and Skill into existing enterprise systems without vendor lock-in\.\b", "Los desarrolladores pueden integrar Celonis Process Intelligence, Process Intelligence, Agent C, MCP, ROI, CTA y Skill en los sistemas empresariales existentes sin bloqueo de proveedor."),
+            (r"\bUsing Celonis Process Intelligence together with Agent C, the organization reduced localization time by 80%, improved Content quality, increased Engagement, boosted Conversion Rate, and maintained Brand tone across every Customer journey\. The unified Translation memory and Quality gate ensured that every translated asset met enterprise standards before publication\.\b", "Utilizando Celonis Process Intelligence junto con Agent C, la organización redujo el tiempo de localización en un 80%, mejoró la calidad del contenido, aumentó la participación, impulsó la tasa de conversión y mantuvo el tono de marca en cada recorrido del cliente. La memoria de traducción unificada y el control de calidad garantizaron que cada activo traducido cumpliera con los estándares empresariales antes de su publicación."),
+            (r"\bAgent C dashboard powered by Celonis Process Intelligence\b", "Panel de Agent C impulsado por Celonis Process Intelligence"),
 
-            # Attribute-level & Placeholder Rules
+            # AI Development Page Full Sentences
+            (r"\bBuild and operate new, composable and AI-driven applications: strategic, operational, business-critical\.\b", "Construya y opere nuevas aplicaciones componibles e impulsadas por IA: estratégicas, operativas y críticas para el negocio."),
+            (r"\bBuild and operate new, composable and AI-driven solutions that are strategic, operational, business-critical\.\b", "Construya y opere nuevas soluciones componibles e impulsadas por IA que sean estratégicas, operativas y críticas para el negocio."),
+            (r"\bBuild the next generation of AI-driven, composable solutions fit for any future\.\b", "Construya la próxima generación de soluciones componibles e impulsadas por IA preparadas para cualquier futuro."),
+            (r"\bBuild AI Agents\b", "Construya Agentes de IA"),
+            (r"\bBuild AI-driven Apps\b", "Construya Aplicaciones Impulsadas por IA"),
+            (r"\bWith the Intelligence API and the first Process Intelligence MCP Server, Celonis makes it easy for AI agents to consume Process Intelligence\. This is the dynamic operational context AI agents need to make relevant decisions and take effective actions\.\b", "Con la Intelligence API y el primer Process Intelligence MCP Server, Celonis facilita que los agentes de IA consuman Process Intelligence. Este es el contexto operativo dinámico que los agentes de IA necesitan para tomar decisiones relevantes y realizar acciones efectivas."),
+            (r"\bCelonis' structured end-to-end build experience enables you to build AI solutions on top of the Process Intelligence Platform, inside or outside of Celonis\.\b", "La experiencia de construcción estructurada de extremo a extremo de Celonis le permite construir soluciones de IA sobre la Process Intelligence Platform, dentro o fuera de Celonis."),
+            (r"\bEasily build AI-powered apps to give your teams access to Celonis' AI-enriched Process Intelligence\.\b", "Construya fácilmente aplicaciones impulsadas por IA para dar a sus equipos acceso a la Process Intelligence enriquecida con IA de Celonis."),
+            (r"\bCelonis' Intelligence API makes it easy to connect the app-building solution of your choice to the Celonis Platform, while Celonis Studio Views enables users to visualize, analyze, and act on process data via an intuitive, AI-assisted interface directly in Celonis\.\b", "La Intelligence API de Celonis facilita la conexión de la solución de creación de aplicaciones que elija a la Celonis Platform, mientras que Celonis Studio Views permite a los usuarios visualizar, analizar y actuar sobre los datos de procesos mediante una interfaz intuitiva asistida por IA directamente en Celonis."),
+            (r"\"Implementing a Celonis-powered AI assistant for credit block management has been a game changer for our order management operations, streamlining our processes and resulting in faster, more reliable outcomes\.\"", "\"Implementar un asistente de IA impulsado por Celonis para la gestión del bloqueo de crédito ha sido revolucionario para nuestras operaciones de gestión de pedidos, optimizando nuestros procesos y ofreciendo resultados más rápidos y confiables.\""),
+            (r"\bThe future of Enterprise AI is here\. Ready to learn more\?\b", "El futuro de la IA empresarial está aquí. ¿Listo para aprender más?"),
+            (r"\bWhat are the most common GenAI use cases\?\b", "¿Cuáles son los casos de uso más comunes de GenAI?"),
+            (r"\bThe most common GenAI use cases we typically see are copilots for developer productivity, customer support, IT support chatbots, and internal document and policy search \(like Confluence\)\.\b", "Los casos de uso más comunes de GenAI que vemos típicamente son copilotos para la productividad del desarrollador, atención al cliente, chatbots de soporte técnico y búsqueda de políticas y documentos internos (como Confluence)."),
+            (r"\bWhy does AI need Process Intelligence\?\b", "¿Por qué la IA necesita Process Intelligence?"),
+            (r"\bTo be effective, Enterprise AI needs context on how your business runs\.\b", "Para ser efectiva, la IA empresarial necesita contexto sobre cómo funciona su negocio."),
+            (r"\bMost enterprises have data trapped inside individual systems\. No single system captures the reality of how work gets done, so AI is missing context, and AI solutions become siloed and ineffective\.\b", "La mayoría de las empresas tienen datos atrapados en sistemas individuales. Ningún sistema por sí solo captura la realidad de cómo se realiza el trabajo, por lo que la IA carece de contexto y las soluciones de IA se aíslan y se vuelven ineficaces."),
+            (r"\bEnterprise AI needs a shared understanding of how your business actually runs in order to improve it\. This is what Process Intelligence provides\.\b", "La IA empresarial necesita una comprensión compartida de cómo funciona realmente su negocio para mejorarlo. Esto es lo que proporciona Process Intelligence."),
+            (r"\bWhere should I start my GenAI journey\?\b", "¿Dónde debo comenzar mi recorrido de GenAI?"),
+            (r"\bWe recommend starting your GenAI journey by building copilots that can answer questions and use them to automate individual process steps \(or small sequences of process steps\), all while keeping humans in the loop\. Once you've started to see ROI, build trust, and capture best practices, you can start building agents to automate more significant process steps\.\b", "Recomendamos comenzar su recorrido de GenAI construyendo copilotos que puedan responder preguntas y usarlos para automatizar pasos de procesos individuales (o pequeñas secuencias de pasos de procesos), todo mientras mantiene a las personas en el bucle. Una vez que comience a ver el ROI, generar confianza y capturar mejores prácticas, puede comenzar a construir agentes para automatizar pasos de procesos más significativos."),
+            (r"\bHow do I make sure I can trust AI\?\b", "¿Cómo me aseguro de poder confiar en la IA?"),
+            (r"\bTo trust AI, your projects must return credible results\. The best way to make sure this happens is to understand how your business operates and ground your AI projects in your organization's data and context\. Every business is different - and all this context doesn't live in one system\. That's why it's critical to have Process Intelligence as an AI input, ensuring you feed it the right context about your business operations\.\b", "Para confiar en la IA, sus proyectos deben devolver resultados creíbles. La mejor manera de asegurarse de que esto suceda es entender cómo opera su negocio y fundamentar sus proyectos de IA en los datos y el contexto de su organización. Cada negocio es diferente, y todo este contexto no reside en un solo sistema. Por eso es crítico tener Process Intelligence como entrada de IA, asegurándose de alimentarla con el contexto correcto sobre las operaciones de su negocio."),
+            (r"\bThe Build Experience\b", "La Experiencia de Construcción"),
+            (r"\bAnalyze\b", "Analizar"),
+            (r"\bExplore how your processes truly run, identify the most impactful and strategic use cases for AI, and understand not just how to fix prevent problems but prevent them altogether\.\b", "Explore cómo se ejecutan realmente sus procesos, identifique los casos de uso más impactantes y estratégicos para la IA, y entienda no solo cómo solucionar problemas sino cómo prevenirlos por completo."),
+            (r"\bRedesign the target state of your operations based on the insights gained in analysis\. Set outcomes, guardrails, and AI insertion points with the help of best-practice blueprints\.\b", "Rediseñe el estado objetivo de sus operaciones basándose en la información obtenida en el análisis. Establezca resultados, restricciones y puntos de inserción de IA con la ayuda de esquemas de mejores prácticas."),
+            (r"\bOperate your new process, orchestrating AI solutions alongside your people and systems to transform and continuously improve operations and generate tangible RoAI\.\b", "Opere su nuevo proceso, orquestando soluciones de IA junto con su personal y sistemas para transformar y mejorar continuamente las operaciones y generar un RoAI tangible."),
+            (r"\bJoin a demo\b", "Unirse a una demostración"),
+            (r"\bGet started\b", "Comenzar")
+        ]
+
+        result = text
+        for pattern, repl in full_sentences:
+            if re.search(pattern, result, flags=re.IGNORECASE):
+                result = re.sub(pattern, repl, result, flags=re.IGNORECASE)
+
+        # STAGE 2: CLAUSE & PHRASE LEVEL REPLACEMENTS
+        clauses = [
+            (r"\bcombines Artificial Intelligence \(AI\), Process Intelligence, and enterprise knowledge\b", "combina Inteligencia Artificial (IA), Process Intelligence y conocimiento empresarial"),
+            (r"\bto optimize every Workflow across finance, supply chain, procurement, and customer operations\b", "para optimizar cada Flujo de trabajo en finanzas, cadena de suministro, compras y operaciones de clientes"),
+            (r"\bhelps organizations improve Content quality, increase Engagement, maximize Conversion Rate\b", "ayuda a las organizaciones a mejorar la calidad del contenido, aumentar la participación, maximizar la tasa de conversión"),
+            (r"\band accelerate every Customer journey using a unified Translation memory, an intelligent Quality gate, and a centralized Glossary\b", "y acelerar cada recorrido del cliente utilizando una memoria de traducción unificada, un control de calidad inteligente y un glosario centralizado"),
+            (r"\bMarketing teams can personalize every Landing page, Newsletter, and Call-to-action\b", "Los equipos de marketing pueden personalizar cada página de destino, boletín de noticias y llamada a la acción"),
+            (r"\bwhile maintaining a consistent Brand tone across every Touchpoint throughout the entire Pipeline\b", "mientras mantienen un tono de marca coherente en cada punto de contacto a lo largo de todo el canal de ventas"),
+            (r"\bJoin our Webinar to learn how every Lead can be nurtured\b", "Únase a nuestro Seminario web para aprender cómo cada prospecto puede ser nutrido"),
+            (r"\bthrough a personalized Landing page, automated Newsletter, intelligent Call-to-action, and AI-powered Workflow built with Agent C\b", "a través de una página de destino personalizada, boletín de noticias automatizado, llamada a la acción inteligente y Flujo de trabajo impulsado por IA creado con Agent C"),
+            (r"\bThe MCP Server communicates with every Skill to automate enterprise localization\b", "El servidor MCP se comunica con cada Skill para automatizar la localización empresarial"),
+            (r"\bwhile protecting ROI and preserving every Celonis product name\b", "mientras protege el ROI y conserva cada nombre de producto de Celonis"),
+            (r"\bDevelopers can integrate Celonis Process Intelligence, Process Intelligence, Agent C, MCP, ROI, CTA, and Skill\b", "Los desarrolladores pueden integrar Celonis Process Intelligence, Process Intelligence, Agent C, MCP, ROI, CTA y Skill"),
+            (r"\binto existing enterprise systems without vendor lock-in\b", "en los sistemas empresariales existentes sin bloqueo de proveedor"),
+            (r"\bUsing Celonis Process Intelligence together with Agent C\b", "Utilizando Celonis Process Intelligence junto con Agent C"),
+            (r"\bthe organization reduced localization time by 80%\b", "la organización redujo el tiempo de localización en un 80%"),
+            (r"\bimproved Content quality, increased Engagement, boosted Conversion Rate\b", "mejoró la calidad del contenido, aumentó la participación, impulsó la tasa de conversión"),
+            (r"\band maintained Brand tone across every Customer journey\b", "y mantuvo el tono de marca en cada recorrido del cliente"),
+            (r"\bThe unified Translation memory and Quality gate ensured that every translated asset met enterprise standards before publication\b", "La memoria de traducción unificada y el control de calidad garantizaron que cada activo traducido cumpliera con los estándares empresariales antes de su publicación")
+        ]
+
+        for pattern, repl in clauses:
+            if re.search(pattern, result, flags=re.IGNORECASE):
+                result = re.sub(pattern, repl, result, flags=re.IGNORECASE)
+
+        # STAGE 3: SUB-WORD & INDIVIDUAL GLOSSARY FALLBACKS (Executed Last)
+        sub_words = [
+            (r"\bAutomatic Glossary enforcement\b", "Aplicación automática del glosario"),
+            (r"\bConsistent Brand tone\b", "Tono de marca coherente"),
+            (r"\bUnified Translation memory\b", "Memoria de traducción unificada"),
+            (r"\bAI-powered Workflow optimization\b", "Optimización de Flujo de trabajo impulsada por IA"),
+            (r"\bVisibility across the entire sales Pipeline\b", "Visibilidad en todo el canal de ventas"),
+            (r"\bPersonalized Customer journey\b", "Recorrido del cliente personalizado"),
+            (r"\bHigher Engagement and Conversion Rate\b", "Mayor participación y tasa de conversión"),
+            (r"\bEnterprise Dashboard\b", "Panel Empresarial"),
+            (r"\bContact Sales\b", "Contactar a ventas"),
+            (r"\bRequest Demo\b", "Solicitar demostración"),
+            (r"\bRegister Now\b", "Registrarse ahora"),
             (r"\bEnter Lead Name\b", "Ingrese el nombre del prospecto"),
             (r"\bEnter Email\b", "Ingrese el correo electrónico"),
-            (r"\bClick CTA button\b", "Haga clic en el botón CTA"),
-            (r"\bRegister now\b", "Registrarse ahora"),
-            (r"\bEnter\b", "Ingrese"),
+            (r"\bCompany Name\b", "Nombre de la empresa"),
+            (r"\bEnterprise Metrics\b", "Métricas Empresariales"),
+            (r"\bSuccess Story\b", "Historia de éxito"),
+            (r"\bRead Documentation\b", "Leer documentación"),
+            (r"\bDownload Whitepaper\b", "Descargar Libro blanco"),
+            (r"\bVisit Website\b", "Visitar el sitio web"),
+            (r"\bLearn More\b", "Más información"),
+            (r"\bJoin a demo\b", "Unirse a una demostración"),
 
-            # Generic Term Rules (Agent -> Agente when not Agent C)
-            (r"\bAgent technology\b", "tecnología de Agente"),
-            (r"\bAgent\b", "Agente"),
-
-            # Excel Glossary Mandates
             (r"\bConfidence score\b", "Puntuación de confianza"),
-            (r"\bconfidence score\b", "puntuación de confianza"),
             (r"\bBrand tone\b", "Tono de marca"),
-            (r"\bbrand tone\b", "tono de marca"),
             (r"\bGlossary enforcement\b", "Aplicación del glosario"),
             (r"\bGlossary\b", "Glosario"),
-            (r"\bglossary\b", "glosario"),
             (r"\bCustomer Journey\b", "Recorrido del cliente"),
             (r"\bcustomer journey\b", "recorrido del cliente"),
-            (r"\bViaje del cliente\b", "Recorrido del cliente"),
             (r"\bEngagement\b", "Participación"),
-            (r"\bengagement\b", "participación"),
             (r"\bLanding page\b", "Página de destino"),
-            (r"\blanding page\b", "página de destino"),
-            (r"\bLead generation\b", "Generación de prospectos"),
-            (r"\blead-gen\b", "captación de prospectos"),
             (r"\bLead volume\b", "volumen de prospectos"),
             (r"\bLead\b", "Prospecto"),
-            (r"\blead\b", "prospecto"),
             (r"\bNewsletter\b", "Boletín de noticias"),
-            (r"\bnewsletter\b", "boletín de noticias"),
             (r"\bPipeline\b", "Canal de ventas"),
-            (r"\bpipeline\b", "canal de ventas"),
             (r"\bQuality gate\b", "Control de calidad"),
             (r"\bTouchpoint\b", "Punto de contacto"),
-            (r"\btouchpoints\b", "puntos de contacto"),
             (r"\bTranslation memory\b", "Memoria de traducción"),
             (r"\bWebinar\b", "Seminario web"),
-            (r"\bwebinar\b", "seminario web"),
             (r"\bWorkflow\b", "Flujo de trabajo"),
-            (r"\bworkflow\b", "flujo de trabajo"),
             (r"\bWhitepaper\b", "Libro blanco"),
-            (r"\bwhitepaper\b", "libro blanco"),
-
-            # Sample Landing Page Phrases
-            (r"\bAccelerate Your Customer Journey with Celonis Process Intelligence\b", "Acelere su recorrido del cliente con Celonis Process Intelligence"),
-            (r"\bAgent C combines Artificial Intelligence \(AI\) with Process Intelligence to optimize every Workflow.\b", "Agent C combina Inteligencia Artificial (IA) con Process Intelligence para optimizar cada Flujo de trabajo."),
-            (r"\bCampaign Overview\b", "Resumen de la campaña"),
-            (r"\bOur latest Brand campaign helps organizations improve Content quality, increase Engagement, and maximize Conversion Rate using a unified Translation memory and intelligent Quality gate.\b", "Nuestra última campaña de marca ayuda a las organizaciones a mejorar la calidad del contenido, aumentar la participación y maximizar la tasa de conversión utilizando una memoria de traducción unificada y un control de calidad inteligente."),
-            (r"\bWhy Choose Celonis\?\b", "¿Por qué elegir Celonis?"),
-            (r"\bConfidence score for every translated asset\b", "Puntuación de confianza para cada activo traducido"),
-            (r"\bBuilt-in Glossary enforcement\b", "Aplicación de glosario integrada"),
-            (r"\bConsistent Brand tone\b", "Tono de marca coherente"),
-            (r"\bEvery Touchpoint remains consistent\b", "Cada punto de contacto se mantiene coherente"),
-            (r"\bPipeline visibility for marketing teams\b", "Visibilidad del canal de ventas para equipos de marketing"),
-            (r"\bUpcoming Webinar\b", "Próximo Seminario web"),
-            (r"\bJoin our Webinar to learn how every Lead can be nurtured through a personalized Landing page and Newsletter powered by Agent technology.\b", "Únase a nuestro Seminario web para aprender cómo cada prospecto puede ser nutrido a través de una página de destino personalizada y un boletín de noticias impulsado por la tecnología de Agente."),
-            (r"\bDeveloper Integration\b", "Integración para desarrolladores"),
-            (r"\bThe MCP server communicates with each Skill to automate enterprise localization while protecting ROI and preserving every Celonis product name.\b", "El servidor MCP se comunica con cada Skill para automatizar la localización empresarial mientras protege el ROI y conserva cada nombre de producto de Celonis."),
-            (r"\bEnterprise Metrics\b", "Métricas Empresariales"),
-
-            # Remaining English Stopwords Removal
-            (r"\bcommunicates\b", "se comunica"),
-            (r"\bpowered by\b", "impulsado por"),
-            (r"\bpowered\b", "impulsado"),
-            (r"\bevery\b", "cada"),
-            (r"\beach\b", "cada"),
-            (r"\bVisit Website\b", "Visitar el sitio web"),
-            (r"\bVisit\b", "Visitar"),
-            (r"\bLearn more\b", "Más información"),
-            (r"\blearn\b", "aprender"),
-            (r"\bRegister\b", "Registrarse"),
-            (r"\bName\b", "Nombre"),
-            (r"\bProduct\b", "Producto"),
-            (r"\bremains\b", "permanece"),
-
-            (r"\bGive Enterprise AI operational clarity\b", "Aporte claridad operativa a la IA empresarial"),
-            (r"\bThe Celonis Context Model\b", "El Celonis Context Model"),
-            (r"\bEnterprise Execution Management System\b", "Sistema Empresarial de Gestión de Ejecución"),
-            (r"\bProcess Mining at Enterprise Scale\b", "Minería de Procesos a Escala Empresarial"),
-            (r"\bReal-time Process Insights\b", "Información de Procesos en Tiempo Real"),
-            (r"\bAutomated Action Engine\b", "Motor de Acción Automatizado"),
-            (r"\bKey Execution Indicators\b", "Indicadores Clave de Ejecución"),
-
-            (r"\bAccelerate\b", "Acelere"),
-            (r"\bStreamline\b", "Optimice"),
-            (r"\bTransform\b", "Transforme"),
-            (r"\bOptimize\b", "Optimice"),
-            (r"\bEmpower\b", "Potencie"),
-            (r"\bIncrease\b", "Aumente"),
-            (r"\bImprove\b", "Mejore"),
-            (r"\bReduce\b", "Reduzca"),
-            (r"\bSave\b", "Ahorre"),
-            (r"\bBuild\b", "Construya"),
-            (r"\bDeploy\b", "Despliegue"),
-            (r"\bDiscover\b", "Descubra"),
-            (r"\bExplore\b", "Explore"),
-            (r"\bAnalyze\b", "Analice"),
-            (r"\bDrive\b", "Impulse"),
-            (r"\bGenerate\b", "Genere"),
-            (r"\bJoin\b", "Únase a"),
-            (r"\bDownload\b", "Descargue"),
-            (r"\bGet Started\b", "Comenzar ahora"),
-            (r"\bContact Us\b", "Contáctenos"),
+            (r"\bConversion Rate\b", "Tasa de conversión"),
+            (r"\bCall-to-action\b", "Llamada a la acción"),
+            (r"\bContent quality\b", "Calidad del contenido"),
+            (r"\bContent\b", "Contenido"),
+            (r"\bBrand\b", "Marca"),
 
             (r"\bEnterprise\b", "Empresarial"),
             (r"\bManagement\b", "Gestión"),
             (r"\bSystem\b", "Sistema"),
             (r"\bPlatform\b", "Plataforma"),
-            (r"\bGrowth\b", "Crecimiento"),
             (r"\bSolution\b", "Solución"),
             (r"\bServices\b", "Servicios"),
             (r"\bData\b", "Datos"),
             (r"\bSecurity\b", "Seguridad"),
-            (r"\bCloud\b", "Nube"),
-            (r"\bOptimization\b", "Optimización"),
             (r"\bCustomer\b", "Cliente"),
             (r"\bBusiness\b", "Negocio"),
-            (r"\bInsights\b", "Información"),
-            (r"\bAnalytics\b", "Análisis"),
-            (r"\bAutomation\b", "Automatización"),
-            (r"\bDigital\b", "Digital"),
-            (r"\bTransformation\b", "Transformación"),
             (r"\bIntelligence\b", "Inteligencia"),
             (r"\bProcess\b", "Procesos"),
-            (r"\bExecution\b", "Ejecución"),
-            (r"\bClarity\b", "Claridad"),
             (r"\bOperations\b", "Operaciones"),
-            (r"\bPricing\b", "Precios"),
-            (r"\bFeatures\b", "Características"),
-            (r"\bOverview\b", "Visión general"),
+            (r"\bResources\b", "Recursos"),
+            (r"\bName\b", "Nombre"),
+            (r"\bEmail\b", "Correo electrónico"),
             (r"\bCompany\b", "Empresa"),
-            (r"\bTeam\b", "Equipo"),
-            (r"\bReport\b", "Informe"),
-            (r"\bStrategy\b", "Estrategia"),
-            (r"\bSavings\b", "Ahorros"),
-            (r"\bAnnual\b", "Anual"),
-            (r"\bMonthly\b", "Mensual"),
-            (r"\bFree\b", "Gratuito"),
-            (r"\bToday\b", "Hoy"),
-            (r"\bNow\b", "Ahora"),
+            (r"\bRegister\b", "Registrarse"),
 
             (r"\bwith\b", "con"),
             (r"\band\b", "y"),
@@ -428,8 +423,7 @@ class LLMProvider:
             (r"\ba\b", "un")
         ]
 
-        result = text
-        for pattern, repl in replacements:
+        for pattern, repl in sub_words:
             result = re.sub(pattern, repl, result, flags=re.IGNORECASE)
 
         for placeholder, original_dnt in dnt_protected.items():
@@ -444,85 +438,113 @@ class LLMProvider:
         inject_error: bool
     ) -> str:
         translations = {
+            # Accelerate Enterprise Transformation Landing Page Mappings
+            "Accelerate Enterprise Transformation with Celonis Process Intelligence": "Acelere la Transformación Empresarial con Celonis Process Intelligence",
+            "Agent C combines Artificial Intelligence (AI), Process Intelligence, and enterprise knowledge to optimize every Workflow across finance, supply chain, procurement, and customer operations.": "Agent C combina Inteligencia Artificial (IA), Process Intelligence y conocimiento empresarial para optimizar cada Flujo de trabajo en finanzas, cadena de suministro, compras y operaciones de clientes.",
+            "Request Demo": "Solicitar demostración",
+            "Campaign Overview": "Resumen de la campaña",
+            "Our latest Brand campaign helps organizations improve Content quality, increase Engagement, maximize Conversion Rate, and accelerate every Customer journey using a unified Translation memory, an intelligent Quality gate, and a centralized Glossary.": "Nuestra última campaña de marca ayuda a las organizaciones a mejorar la calidad del contenido, aumentar la participación, maximizar la tasa de conversión y acelerar cada recorrido del cliente utilizando una memoria de traducción unificada, un control de calidad inteligente y un glosario centralizado.",
+            "Marketing teams can personalize every Landing page, Newsletter, and Call-to-action while maintaining a consistent Brand tone across every Touchpoint throughout the entire Pipeline.": "Los equipos de marketing pueden personalizar cada página de destino, boletín de noticias y llamada a la acción mientras mantienen un tono de marca coherente en cada punto de contacto a lo largo de todo el canal de ventas.",
+            "Why Choose Celonis?": "¿Por qué elegir Celonis?",
+            "Confidence score for every translated asset": "Puntuación de confianza para cada activo traducido",
+            "Automatic Glossary enforcement": "Aplicación automática del glosario",
+            "Consistent Brand tone": "Tono de marca coherente",
+            "Unified Translation memory": "Memoria de traducción unificada",
+            "AI-powered Workflow optimization": "Optimización de Flujo de trabajo impulsada por IA",
+            "Visibility across the entire sales Pipeline": "Visibilidad en todo el canal de ventas",
+            "Personalized Customer journey": "Recorrido del cliente personalizado",
+            "Higher Engagement and Conversion Rate": "Mayor participación y tasa de conversión",
+            "Upcoming Webinar": "Próximo Seminario web",
+            "Join our Webinar to learn how every Lead can be nurtured through a personalized Landing page, automated Newsletter, intelligent Call-to-action, and AI-powered Workflow built with Agent C.": "Únase a nuestro Seminario web para aprender cómo cada prospecto puede ser nutrido a través de una página de destino personalizada, boletín de noticias automatizado, llamada a la acción inteligente y Flujo de trabajo impulsado por IA creado con Agent C.",
+            "Register Now": "Registrarse ahora",
+            "Developer Integration": "Integración para desarrolladores",
+            "The MCP Server communicates with every Skill to automate enterprise localization while protecting ROI and preserving every Celonis product name. Developers can integrate Celonis Process Intelligence, Process Intelligence, Agent C, MCP, ROI, CTA, and Skill into existing enterprise systems without vendor lock-in.": "El servidor MCP se comunica con cada Skill para automatizar la localización empresarial mientras protege el ROI y conserva cada nombre de producto de Celonis. Los desarrolladores pueden integrar Celonis Process Intelligence, Process Intelligence, Agent C, MCP, ROI, CTA y Skill en los sistemas empresariales existentes sin bloqueo de proveedor.",
+            "Enterprise Dashboard": "Panel Empresarial",
+            "Agent C dashboard powered by Celonis Process Intelligence": "Panel de Agent C impulsado por Celonis Process Intelligence",
+            "Contact Sales": "Contactar a ventas",
+            "Name": "Nombre",
+            "Enter Lead Name": "Ingrese el nombre del prospecto",
+            "Email": "Correo electrónico",
+            "Enter Email": "Ingrese el correo electrónico",
+            "Company": "Empresa",
+            "Company Name": "Nombre de la empresa",
+            "Register": "Registrarse",
+            "Enterprise Metrics": "Métricas Empresariales",
+            "Success Story": "Historia de éxito",
+            "Using Celonis Process Intelligence together with Agent C, the organization reduced localization time by 80%, improved Content quality, increased Engagement, boosted Conversion Rate, and maintained Brand tone across every Customer journey. The unified Translation memory and Quality gate ensured that every translated asset met enterprise standards before publication.": "Utilizando Celonis Process Intelligence junto con Agent C, la organización redujo el tiempo de localización en un 80%, mejoró la calidad del contenido, aumentó la participación, impulsó la tasa de conversión y mantuvo el tono de marca en cada recorrido del cliente. La memoria de traducción unificada y el control de calidad garantizaron que cada activo traducido cumpliera con los estándares empresariales antes de su publicación.",
+            "Resources": "Recursos",
+            "Read Documentation": "Leer documentación",
+            "Download Whitepaper": "Descargar Libro blanco",
+            "Visit Website": "Visitar el sitio web",
+            "Learn More": "Más información",
+
+            # AI Development Page Mappings
+            "Composable Solutions": "Soluciones Componibles",
+            "Build and operate new, composable and AI-driven applications: strategic, operational, business-critical.": "Construya y opere nuevas aplicaciones componibles e impulsadas por IA: estratégicas, operativas y críticas para el negocio.",
+            "Build and operate new, composable and AI-driven solutions that are strategic, operational, business-critical.": "Construya y opere nuevas soluciones componibles e impulsadas por IA que sean estratégicas, operativas y críticas para el negocio.",
+            "Build the next generation of AI-driven, composable solutions fit for any future.": "Construya la próxima generación de soluciones componibles e impulsadas por IA preparadas para cualquier futuro.",
+            "Build AI Agents": "Construya Agentes de IA",
+            "Build AI-driven Apps": "Construya Aplicaciones Impulsadas por IA",
+            "With the Intelligence API and the first Process Intelligence MCP Server, Celonis makes it easy for AI agents to consume Process Intelligence. This is the dynamic operational context AI agents need to make relevant decisions and take effective actions.": "Con la Intelligence API y el primer Process Intelligence MCP Server, Celonis facilita que los agentes de IA consuman Process Intelligence. Este es el contexto operativo dinámico que los agentes de IA necesitan para tomar decisiones relevantes y realizar acciones efectivas.",
+            "Celonis' structured end-to-end build experience enables you to build AI solutions on top of the Process Intelligence Platform, inside or outside of Celonis.": "La experiencia de construcción estructurada de extremo a extremo de Celonis le permite construir soluciones de IA sobre la Process Intelligence Platform, dentro o fuera de Celonis.",
+            "Easily build AI-powered apps to give your teams access to Celonis' AI-enriched Process Intelligence.": "Construya fácilmente aplicaciones impulsadas por IA para dar a sus equipos acceso a la Process Intelligence enriquecida con IA de Celonis.",
+            "Celonis' Intelligence API makes it easy to connect the app-building solution of your choice to the Celonis Platform, while Celonis Studio Views enables users to visualize, analyze, and act on process data via an intuitive, AI-assisted interface directly in Celonis.": "La Intelligence API de Celonis facilita la conexión de la solución de creación de aplicaciones que elija a la Celonis Platform, mientras que Celonis Studio Views permite a los usuarios visualizar, analizar y actuar sobre los datos de procesos mediante una interfaz intuitiva asistida por IA directamente en Celonis.",
+            "Rafael Domene": "Rafael Domene",
+            "Global CIO at Cosentino": "Global CIO en Cosentino",
+            "\"Implementing a Celonis-powered AI assistant for credit block management has been a game changer for our order management operations, streamlining our processes and resulting in faster, more reliable outcomes.\"": "\"Implementar un asistente de IA impulsado por Celonis para la gestión del bloqueo de crédito ha sido revolucionario para nuestras operaciones de gestión de pedidos, optimizando nuestros procesos y ofreciendo resultados más rápidos y confiables.\"",
+            "The future of Enterprise AI is here. Ready to learn more?": "El futuro de la IA empresarial está aquí. ¿Listo para aprender más?",
+            "What are the most common GenAI use cases?": "¿Cuáles son los casos de uso más comunes de GenAI?",
+            "The most common GenAI use cases we typically see are copilots for developer productivity, customer support, IT support chatbots, and internal document and policy search (like Confluence).": "Los casos de uso más comunes de GenAI que vemos típicamente son copilotos para la productividad del desarrollador, atención al cliente, chatbots de soporte técnico y búsqueda de políticas y documentos internos (como Confluence).",
+            "Why does AI need Process Intelligence?": "¿Por qué la IA necesita Process Intelligence?",
+            "To be effective, Enterprise AI needs context on how your business runs.": "Para ser efectiva, la IA empresarial necesita contexto sobre cómo funciona su negocio.",
+            "Most enterprises have data trapped inside individual systems. No single system captures the reality of how work gets done, so AI is missing context, and AI solutions become siloed and ineffective.": "La mayoría de las empresas tienen datos atrapados en sistemas individuales. Ningún sistema por sí solo captura la realidad de cómo se realiza el trabajo, por lo que la IA carece de contexto y las soluciones de IA se aíslan y se vuelven ineficaces.",
+            "Enterprise AI needs a shared understanding of how your business actually runs in order to improve it. This is what Process Intelligence provides.": "La IA empresarial necesita una comprensión compartida de cómo funciona realmente su negocio para mejorarlo. Esto es lo que proporciona Process Intelligence.",
+            "Where should I start my GenAI journey?": "¿Dónde debo comenzar mi recorrido de GenAI?",
+            "We recommend starting your GenAI journey by building copilots that can answer questions and use them to automate individual process steps (or small sequences of process steps), all while keeping humans in the loop. Once you've started to see ROI, build trust, and capture best practices, you can start building agents to automate more significant process steps.": "Recomendamos comenzar su recorrido de GenAI construyendo copilotos que puedan responder preguntas y usarlos para automatizar pasos de procesos individuales (o pequeñas secuencias de pasos de procesos), todo mientras mantiene a las personas en el bucle. Una vez que comience a ver el ROI, generar confianza y capturar mejores prácticas, puede comenzar a construir agentes para automatizar pasos de procesos más significativos.",
+            "How do I make sure I can trust AI?": "¿Cómo me aseguro de poder confiar en la IA?",
+            "To trust AI, your projects must return credible results. The best way to make sure this happens is to understand how your business operates and ground your AI projects in your organization's data and context. Every business is different - and all this context doesn't live in one system. That's why it's critical to have Process Intelligence as an AI input, ensuring you feed it the right context about your business operations.": "Para confiar en la IA, sus proyectos deben devolver resultados creíbles. La mejor manera de asegurarse de que esto suceda es entender cómo opera su negocio y fundamentar sus proyectos de IA en los datos y el contexto de su organización. Cada negocio es diferente, y todo este contexto no reside en un solo sistema. Por eso es crítico tener Process Intelligence como entrada de IA, asegurándose de alimentarla con el contexto correcto sobre las operaciones de su negocio.",
+            "The Build Experience": "La Experiencia de Construcción",
+            "Analyze": "Analizar",
+            "Explore how your processes truly run, identify the most impactful and strategic use cases for AI, and understand not just how to fix prevent problems but prevent them altogether.": "Explore cómo se ejecutan realmente sus procesos, identifique los casos de uso más impactantes y estratégicos para la IA, y entienda no solo cómo solucionar problemas sino cómo prevenirlos por completo.",
+            "Design": "Diseñar",
+            "Redesign the target state of your operations based on the insights gained in analysis. Set outcomes, guardrails, and AI insertion points with the help of best-practice blueprints.": "Rediseñe el estado objetivo de sus operaciones basándose en la información obtenida en el análisis. Establezca resultados, restricciones y puntos de inserción de IA con la ayuda de esquemas de mejores prácticas.",
+            "Operate": "Operar",
+            "Operate your new process, orchestrating AI solutions alongside your people and systems to transform and continuously improve operations and generate tangible RoAI.": "Opere su nuevo proceso, orquestando soluciones de IA junto con su personal y sistemas para transformar y mejorar continuamente las operaciones y generar un RoAI tangible.",
+            "Get started": "Comenzar",
+
+            # Context Model Page Mappings
             "Give Enterprise AI operational clarity": "Aporte claridad operativa a la IA empresarial",
             "The Celonis Context Model": "El Celonis Context Model",
-            "The Celonis Context Model - Enterprise AI Operational Clarity": "El Celonis Context Model - Claridad Operativa de IA Empresarial",
             "Enterprise AI has blind spots when it comes to how your business runs.": "La IA empresarial tiene puntos ciegos sobre cómo funciona su negocio.",
-            "The Celonis Context Model provides operational context through a dynamic digital twin...": "El Celonis Context Model proporciona contexto operativo mediante un gemelo digital...",
-            "The Celonis Context Model provides operational context through a dynamic, real-time digital twin of operations...": "El Celonis Context Model proporciona contexto operativo mediante un gemelo digital dinámico en tiempo real de sus operaciones...",
+            "The Celonis Context Model provides operational context through a dynamic, real-time digital twin of operations, translating the reality of the business into a language that AI understands.": "El Celonis Context Model proporciona contexto operativo mediante un gemelo digital dinámico en tiempo real de sus operaciones, traduciendo la realidad del negocio a un lenguaje que la IA entiende.",
+            "Combining process data, business knowledge, and intelligence, the Context Model gives your people and Enterprise AI the operational clarity to reason correctly, decide sensibly, and act reliably.": "Combinando datos de procesos, conocimiento del negocio e intelligence, el Context Model ofrece a su personal y a la IA empresarial la claridad operativa para razonar correctamente, decidir con sentido común y actuar de manera confiable.",
+            "Understand your operations": "Entienda sus operaciones",
+            "Complex operations in Supply Chain and Finance run across dozens of disparate systems, applications and devices. The Context Model integrates data from all of these into an agnostic digital twin of your operations.": "Las operaciones complejas en la cadena de suministro y finanzas se ejecutan en docenas de sistemas, aplicaciones y dispositivos dispares. El Context Model integra datos de todos estos en un gemelo digital agnóstico de sus operaciones.",
+            "The Context Model understands the relationships between all of the documents, materials, and people that make up your business and how they're interconnected and interdependent. It encompasses both the current state of your operations and the full backstory of every step, interaction and decision that led to this moment.": "El Context Model entiende las relaciones entre todos los documentos, materiales y personas que componen su negocio y cómo están interconectados e interdependientes. Abarca tanto el estado actual de sus operaciones como la historia completa de cada paso, interacción y decisión que condujo a este momento.",
+            "Enriched with business knowledge and intelligence": "Enriquecido con conocimiento del negocio e inteligencia",
+            "The Context Model is enriched with business knowledge, the institutional know-how essential to every company, defining goals and objectives, how you work with customers and partners, industry best practices, and crucially, constraints and guardrails so AI stays on mission and in bounds.": "El Context Model se enriquece con el conocimiento del negocio, el know-how institucional esencial para cualquier empresa, definiendo metas y objetivos, cómo trabaja con clientes y socios, las mejores prácticas de la industria y, fundamentalmente, restricciones y controles para que la IA se mantenga en su misión y dentro de los límites.",
+            "With this foundation, it offers intelligence. Process intelligence, which tells you how your business runs and how to improve it. And Decision Intelligence, which provides predictions about what needs to happen next, and simulations of each scenario to make sure you achieve your goals. With this intelligence, your agents can both fix problems and prevent them altogether.": "Con esta base, ofrece inteligencia. Process Intelligence, que le indica cómo funciona su negocio y cómo mejorarlo. Y Decision Intelligence, que ofrece predicciones sobre lo que debe suceder a continuación y simulaciones de cada escenario para garantizar que alcance sus objetivos. Con esta inteligencia, sus agentes pueden resolver problemas y prevenirlos por completo.",
+            "Open, extensible and future proof": "Abierto, extensible y a prueba de futuro",
+            "The Context Model is designed as an open and extensible layer that you and your partners can continuously enrich with additional data, business knowledge, and intelligence functions.": "El Context Model está diseñado como una capa abierta y extensible que usted y sus socios pueden enriquecer continuamente con datos adicionales, conocimiento del negocio y funciones de inteligencia.",
+            "Its open architecture allows organizations to integrate any data source, AI model, or agent while avoiding vendor lock-in and preserving their operational context as technologies evolve.": "Su arquitectura abierta permite a las organizaciones integrar cualquier fuente de datos, modelo de IA o agente, evitando el bloqueo del proveedor y conservando su contexto operativo a medida que evolucionan las tecnologías.",
             "Talk to a Celonis expert": "Hable con un experto de Celonis",
             "Join a demo": "Unirse a una demostración",
-            "Build AI Agents with Celonis Process Intelligence & Agent C": "Construya agentes de IA con Celonis Process Intelligence y Agent C",
-            "Deploy Agent C for Celonis Process Intelligence": "Despliegue Agent C para Celonis Process Intelligence",
-            "Meet Agent C: Your AI Agent for Operational Excellence": "Conozca a Agent C: Su agente de IA para la excelencia operativa",
-            "Transform your Workflow with Celonis Process Intelligence": "Transforme su flujo de trabajo con Celonis Process Intelligence",
 
             # Table Header Translations
             "Metric": "Métrica",
-            "Value": "Valor",
-
-            # Sample Landing Page Full Sentences
-            "Accelerate Your Customer Journey with Celonis Process Intelligence": "Acelere su recorrido del cliente con Celonis Process Intelligence",
-            "Agent C combines Artificial Intelligence (AI) with Process Intelligence to optimize every Workflow.": "Agent C combina Inteligencia Artificial (IA) con Process Intelligence para optimizar cada Flujo de trabajo.",
-            "Campaign Overview": "Resumen de la campaña",
-            "Our latest Brand campaign helps organizations improve Content quality, increase Engagement, and maximize Conversion Rate using a unified Translation memory and intelligent Quality gate.": "Nuestra última campaña de marca ayuda a las organizaciones a mejorar la calidad del contenido, aumentar la participación y maximizar la tasa de conversión utilizando una memoria de traducción unificada y un control de calidad inteligente.",
-            "Why Choose Celonis?": "¿Por qué elegir Celonis?",
-            "Confidence score for every translated asset": "Puntuación de confianza para cada activo traducido",
-            "Built-in Glossary enforcement": "Aplicación de glosario integrada",
-            "Consistent Brand tone": "Tono de marca coherente",
-            "Every Touchpoint remains consistent": "Cada punto de contacto se mantiene coherente",
-            "Pipeline visibility for marketing teams": "Visibilidad del canal de ventas para equipos de marketing",
-            "Upcoming Webinar": "Próximo Seminario web",
-            "Join our Webinar to learn how every Lead can be nurtured through a personalized Landing page and Newsletter powered by Agent technology.": "Únase a nuestro Seminario web para aprender cómo cada prospecto puede ser nutrido a través de una página de destino personalizada y un boletín de noticias impulsado por la tecnología de Agente.",
-            "Developer Integration": "Integración para desarrolladores",
-            "The MCP server communicates with each Skill to automate enterprise localization while protecting ROI and preserving every Celonis product name.": "El servidor MCP se comunica con cada Skill para automatizar la localización empresarial mientras protege el ROI y conserva cada nombre de producto de Celonis.",
-            "Enterprise Metrics": "Métricas Empresariales",
-            "Visit Website": "Visitar el sitio web",
-            "Enter Lead Name": "Ingrese el nombre del prospecto",
-            "Enter Email": "Ingrese el correo electrónico",
-            "Click CTA button": "Haga clic en el botón CTA",
-            "Register now": "Registrarse ahora",
-
-            # Hard Test 2 String Map
-            "Complex Enterprise Nested DOM Structure Test": "Prueba de Estructura DOM Anidada Empresarial Compleja",
-            "Enterprise Execution Management System": "Sistema Empresarial de Gestión de Ejecución",
-            "Process Mining at Enterprise Scale": "Minería de Procesos a Escala Empresarial",
-            "Real-time Process Insights": "Información de Procesos en Tiempo Real",
-            "Analyze thousands of business process flows simultaneously with": "Analice miles de flujos de procesos de negocio simultáneamente con",
-            "unclosed tags": "etiquetas no cerradas",
-            "Automated Action Engine": "Motor de Acción Automatizado",
-            "Trigger automated remediations across SAP, Oracle, and Salesforce seamlessly.": "Active remediaciones automatizadas en SAP, Oracle y Salesforce sin problemas.",
-            "Missing link href attribute and unclosed strong tag": "Atributo href de enlace faltante y etiqueta strong no cerrada",
-            "Unclosed Nested CTA Button": "Botón CTA Anidado No Cerrado",
-            "Key Execution Indicators": "Indicadores Clave de Ejecución",
-            "334 Hours Annual Review Savings": "334 Horas de Ahorro en Revisión Anual",
-            "373% Direct Financial ROI": "373% de ROI Financiero Directo",
-            "Zero Brand Drift Guarantee": "Garantía de Cero Desviación de Marca",
-
-            # Hard Test 3 String Map (Aligned with Excel Glossary Mandates)
-            "High Corporate Jargon & Unapproved Loanword Test": "Prueba de Jerga Corporativa y Extranjerismos No Aprobados",
-            "Accelerate your Pipeline generation and Lead volume": "Acelere la generación de su Canal de ventas y volumen de Prospectos",
-            "Drive thought leadership and top-of-funnel engagement": "Impulse el liderazgo de pensamiento y la interacción top-of-funnel",
-            "Our latest": "Nuestro último",
-            "Webinar": "Seminario web",
-            "showcases how to reduce": "muestra cómo reducir la",
-            "churn rate": "tasa de cancelación",
-            "and optimize": "y optimizar el",
-            "customer journey": "recorrido del cliente",
-            "touchpoints across all digital channels.": "puntos de contacto en todos los canales digitales.",
-            "Download our free": "Descargue nuestro",
-            "Whitepaper": "Libro blanco",
-            "to transform your": "para transformar su",
-            "lead-gen strategy": "estrategia de captación de prospectos",
-            "and maximize marketing ROI.": "y maximizar el ROI de marketing.",
-            "Join the Webinar Now": "Únase al Seminario Web Ahora",
-
-            "Generate more Lead volume on your Landing page": "Genere más volumen de prospectos en su página de destino",
-            "Register for our next Webinar to optimize your Customer journey and Engagement.": "Regístrese para nuestro próximo seminario web para optimizar el recorrido de su cliente y la participación.",
-            "Join Newsletter": "Unirse al boletín de noticias",
-            "Unclosed Header Tag": "Etiqueta de encabezado no cerrada",
-            "Missing paragraph tag and stripped CTA button links...": "Etiqueta de párrafo faltante y enlaces de botones CTA eliminados..."
+            "Value": "Valor"
         }
+
+        if "\n" in text:
+            lines = text.split("\n")
+            out_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    out_lines.append(line)
+                else:
+                    out_lines.append(self._mock_translation_response(stripped, dnt_terms, inject_error))
+            return "\n".join(out_lines)
 
         if text in translations:
             res = translations[text]

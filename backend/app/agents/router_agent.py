@@ -3,8 +3,9 @@ from app.models import QualityMetricBreakdown, RoutingDecision
 class RouterAgent:
     def route(self, quality_score: QualityMetricBreakdown, auto_pass_threshold: float = 88.0, hitl_threshold: float = 70.0) -> RoutingDecision:
         score = quality_score.overall_confidence
+        residue_level = getattr(quality_score, "residue_level", "NONE")
 
-        # Hard Override: Any DNT violation forces HITL Review or Re-translation
+        # Hard Override 1: Any DNT violation forces HITL Review or Re-translation
         if quality_score.dnt_violations:
             if score >= hitl_threshold:
                 return RoutingDecision(
@@ -25,12 +26,23 @@ class RouterAgent:
                     recommended_action="Re-trigger translation agent with critique feedback to restore DNT terms."
                 )
 
-        if score >= auto_pass_threshold:
+        # Hard Override 2: Medium/High English Residue forces HITL Review
+        if residue_level in ["MEDIUM", "HIGH"]:
+            return RoutingDecision(
+                status="HITL_REVIEW",
+                threshold_auto_pass=auto_pass_threshold,
+                threshold_hitl=hitl_threshold,
+                reasoning=f"Overridden to HITL Review due to {residue_level} Risk English Residue detected in translated text.",
+                assigned_to="Language Champion (Spanish Team)",
+                recommended_action="Review untranslated English residue phrases in review portal before publishing."
+            )
+
+        if score >= auto_pass_threshold and residue_level in ["NONE", "LOW"]:
             return RoutingDecision(
                 status="AUTO_PASS",
                 threshold_auto_pass=auto_pass_threshold,
                 threshold_hitl=hitl_threshold,
-                reasoning=f"Auto-Pass: Confidence score ({score}%) meets or exceeds threshold ({auto_pass_threshold}%). Zero DNT violations.",
+                reasoning=f"Auto-Pass: Confidence score ({score}%) meets threshold ({auto_pass_threshold}%) with Zero DNT violations and {residue_level} English residue.",
                 assigned_to="Automated CMS / Staging Pipeline",
                 recommended_action="Approve asset for staging deployment and ingest segments into Translation Memory."
             )

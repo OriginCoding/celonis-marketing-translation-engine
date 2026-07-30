@@ -35,6 +35,9 @@ class QualityMetricBreakdown(BaseModel):
     dnt_violations: List[str] = Field(default_factory=list)
     glossary_violations: List[str] = Field(default_factory=list)
     formatting_issues: List[str] = Field(default_factory=list)
+    residue_level: str = "NONE"  # "NONE", "LOW", "MEDIUM", "HIGH"
+    english_residue_words: List[str] = Field(default_factory=list)
+    english_residue_phrases: List[str] = Field(default_factory=list)
     critique_feedback: str = ""
 
 class RoutingDecision(BaseModel):

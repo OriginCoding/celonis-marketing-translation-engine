@@ -1,0 +1,39 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Python cache & build
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Node & Next.js build
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# Logs & Storage Repositories
+backend/logs/
+logs/
+storage/
+*.log
+
+# Personal Private Interview Prep & Defense Scripts (Do Not Push to GitHub)
+interview_prep/
+INTERVIEW_PREP_CHEATSHEET.md
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.development.local
+.env.production.local
+
+# OS Files
+.DS_Store
+Thumbs.db

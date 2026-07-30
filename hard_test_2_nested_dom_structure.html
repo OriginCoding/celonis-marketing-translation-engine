@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Complex Enterprise Nested DOM Structure Test</title>
+</head>
+<body>
+    <div class="container mx-auto grid grid-cols-12 gap-6 p-8">
+        <header class="col-span-12 bg-slate-900 text-white p-6 rounded-2xl">
+            <h1 class="text-3xl font-extrabold tracking-tight">Enterprise Execution Management System</h1>
+            <p class="text-sm text-cyan-400 font-semibold mt-2">Process Mining at Enterprise Scale</p>
+        </header>
+
+        <section class="col-span-8 space-y-6">
+            <article class="card p-6 bg-slate-800 rounded-xl border border-slate-700">
+                <h2 class="text-xl font-bold">Real-time Process Insights</h2>
+                <p>Analyze thousands of business process flows simultaneously with <div><span class="highlight">unclosed tags</span></p>
+                <div class="nested-box font-mono text-xs">
+                    <code>SELECT * FROM process_flows WHERE execution_gap > 0;</code>
+                </div>
+            </article>
+
+            <article class="card p-6 bg-slate-800 rounded-xl border border-slate-700">
+                <h3 class="text-lg font-bold">Automated Action Engine</h3>
+                <p>Trigger automated remediations across SAP, Oracle, and Salesforce seamlessly.</p>
+                <!-- Missing link href attribute and unclosed strong tag -->
+                <a class="btn shadow-lg"><a>Unclosed Nested CTA Button</a>
+            </article>
+        </section>
+
+        <aside class="col-span-4 bg-slate-900 p-6 rounded-2xl border border-slate-800">
+            <h4 class="font-bold text-slate-300">Key Execution Indicators</h4>
+            <ul class="space-y-2 mt-4 text-xs">
+                <li>334 Hours Annual Review Savings</li>
+                <li>373% Direct Financial ROI</li>
+                <li>Zero Brand Drift Guarantee</li>
+            </ul>
+        </aside>
+    </div>
+</body>
+</html>
